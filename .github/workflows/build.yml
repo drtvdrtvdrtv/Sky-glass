@@ -1,0 +1,41 @@
+
+name: Build DR TV APK
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get files
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Extract DR TV
+        run: unzip -q DRTV.zip
+
+      - name: Build APK
+        working-directory: DRTV_SkyStyle_FireStick
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Save APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DR-TV-APK
+          path: DRTV_SkyStyle_FireStick/app/build/outputs/apk/debug/app-debug.apk
