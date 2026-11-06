@@ -23,10 +23,15 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install SDK
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
 
       - name: Extract DR TV
         run: unzip -q DRTV.zip
+
+      - name: Fix Android compatibility
+        run: |
+          sed -i 's/compileSdk 35/compileSdk 36/' DRTV_SkyStyle_FireStick/app/build.gradle
+          sed -i "s/version '8.9.2'/version '8.10.1'/" DRTV_SkyStyle_FireStick/build.gradle
 
       - name: Build APK
         working-directory: DRTV_SkyStyle_FireStick
@@ -39,3 +44,4 @@ jobs:
         with:
           name: DR-TV-APK
           path: DRTV_SkyStyle_FireStick/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
