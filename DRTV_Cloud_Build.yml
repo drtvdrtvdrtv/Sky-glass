@@ -1,0 +1,39 @@
+name: Build DR TV Fire Stick APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - DRTV_SkyStyle_FireStick.zip
+      - .github/workflows/build.yml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Get source ZIP
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        uses: android-actions/setup-android@v4
+      - name: Android platform and tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Extract DR TV
+        run: unzip -q DRTV_SkyStyle_FireStick.zip
+      - name: Build APK
+        working-directory: DRTV_SkyStyle_FireStick
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+      - name: Downloadable APK
+        uses: actions/upload-artifact@v7
+        with:
+          path: DRTV_SkyStyle_FireStick/app/build/outputs/apk/debug/app-debug.apk
+          archive: false
+          if-no-files-found: error
