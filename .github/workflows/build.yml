@@ -1,5 +1,4 @@
-
-name: Build DR TV v3.3 APK
+name: Build DR TV v3.4 Premium APK
 
 on:
   workflow_dispatch:
@@ -11,22 +10,17 @@ jobs:
     steps:
       - name: Get files
         uses: actions/checkout@v4
-
       - name: Install Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Setup Android
         uses: android-actions/setup-android@v4
-
       - name: Install SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
-
       - name: Extract original app
         run: unzip -q DRTV.zip
-
       - name: Add server test and fix compatibility
         run: |
           python3 - <<'PY'
@@ -42,7 +36,7 @@ jobs:
           s=s.replace('import java.net.URL;', 'import java.net.URL;\nimport java.net.Socket;\nimport java.net.InetSocketAddress;\nimport java.net.UnknownHostException;\nimport java.net.ConnectException;\nimport java.net.SocketTimeoutException;')
           key='    public static void login(String dns, String user, String pass, Callback<String> callback) {'
           assert key in s, 'Xtream API source differs from expected version'
-          s=s.replace(key,'''    // Tests server without sending credentials.
+          s=s.replace(key,'''    // Tests TCP connection to the configured server without sending credentials.
               public static void testServer(String dns, Callback<String> callback) {
                   IO.execute(() -> {
                       try {
@@ -66,7 +60,6 @@ jobs:
               }
           ''' + key,1)
           api.write_text(s)
-
           login=root/'app/src/main/java/com/drtv/glass/ui/LoginActivity.java'
           s=login.read_text()
           s=s.replace('private Button login;', 'private Button login,test;')
@@ -94,7 +87,6 @@ jobs:
           '''+key,1)
           login.write_text(s)
           PY
-
       - name: Fix television layouts and Back navigation
         run: |
           python3 - <<'PY'
@@ -110,15 +102,12 @@ jobs:
                   int tileWidth=Math.max(80,usableDp/columns-24);'''
           assert a in s
           s=s.replace(a,b,1)
-
           a='U.tile(this,item,landscape,()->open(item))'
           assert a in s
           s=s.replace(a,'U.tile(this,item,landscape,tileWidth,()->open(item))',1)
-
           a='U.lp(-1,224,this)'
           assert a in s
           s=s.replace(a,'U.lp(-1,280,this)',1)
-
           a='''    @Override public void onBackPressed() {
                   if(!tab.equals("Home")) switchTab("Home");else super.onBackPressed();
               }'''
@@ -132,7 +121,6 @@ jobs:
               }'''
           assert a in s
           h.write_text(s.replace(a,b,1))
-
           u=root/'U.java'
           s=u.read_text()
           a='''    public static View tile(Activity c,MediaEntry m,boolean landscape,Runnable open) {
@@ -144,7 +132,6 @@ jobs:
                   int height=Math.max(85,Math.round(width*(landscape?124f/208f:190f/148f)));'''
           assert a in s
           u.write_text(s.replace(a,b,1))
-
           l=root/'LoginActivity.java'
           s=l.read_text()
           fixes=[
@@ -162,11 +149,168 @@ jobs:
               assert a in s,a
               s=s.replace(a,b,1)
           l.write_text(s)
-
           g=Path('DRTV_SkyStyle_FireStick/app/build.gradle')
           s=g.read_text().replace('versionCode 4','versionCode 5').replace("versionName '3.2'","versionName '3.3'")
           g.write_text(s)
           print('DR TV v3.3 layout/back fixes applied')
+          PY
+      - name: Upgrade premium Glass home and visuals
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+          root=Path('DRTV_SkyStyle_FireStick')
+          ui=root/'app/src/main/java/com/drtv/glass/ui'
+          file=ui/'HomeActivity.java'
+          s=file.read_text()
+          # Keep the current, tested browse, episode, player, and Back behaviour untouched.
+          s=s.replace('import android.widget.HorizontalScrollView;', 'import android.widget.HorizontalScrollView;\nimport android.widget.FrameLayout;',1)
+          needle='    private int shown;'
+          assert needle in s
+          s=s.replace(needle,needle+'''
+              private TextView featuredTitle,featuredCaption;
+              private android.widget.ImageView featuredPoster;
+              private MediaEntry featuredEntry;
+          ''',1)
+          start=s.index('    private void home(int mine) {')
+          end=s.index('    private void showcase(String sectionName',start)
+          new_home='''    private void home(int mine) {
+                  featuredEntry=null;
+                  FrameLayout hero=new FrameLayout(this);
+                  hero.setBackgroundResource(R.drawable.bg_hero);
+                  LinearLayout.LayoutParams heroParams=U.lp(-1,258,this);
+                  heroParams.setMargins(0,U.dp(this,10),0,U.dp(this,15));
+                  body.addView(hero,heroParams);
+
+                  LinearLayout stage=U.row(this);
+                  U.pad(stage,this,33,16,22,15);
+                  hero.addView(stage,new FrameLayout.LayoutParams(-1,-1));
+
+                  LinearLayout copy=U.col(this);
+                  stage.addView(copy,new LinearLayout.LayoutParams(0,-1,1));
+                  TextView eyebrow=U.text(this,"DISCOVER  /  YOUR ENTERTAINMENT",12,true);
+                  eyebrow.setTextColor(0xFFAFDFFF);
+                  copy.addView(eyebrow,U.lp(-1,27,this));
+                  featuredTitle=U.text(this,"Something brilliant starts here.",29,true);
+                  featuredTitle.setMaxLines(2);
+                  featuredTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                  copy.addView(featuredTitle,U.lp(-1,80,this));
+                  featuredCaption=U.text(this,"LIVE TV   •   MOVIES   •   SERIES",14,false);
+                  featuredCaption.setTextColor(0xFFD3DAEF);
+                  featuredCaption.setMaxLines(2);
+                  copy.addView(featuredCaption,U.lp(-1,35,this));
+                  LinearLayout controls=U.row(this);
+                  U.pad(controls,this,0,12,0,0);
+                  copy.addView(controls,U.lp(-1,65,this));
+                  android.widget.Button watch=U.button(this,"▶  Watch now",()->{
+                      if(featuredEntry!=null)open(featuredEntry);else switchTab("Live TV");
+                  });
+                  watch.setTextColor(0xFFFFFFFF);
+                  LinearLayout.LayoutParams w=U.lp(158,47,this);
+                  controls.addView(watch,w);
+                  android.widget.Button browse=U.button(this,"Explore movies",()->switchTab("Movies"));
+                  LinearLayout.LayoutParams b=U.lp(158,47,this);
+                  b.setMargins(U.dp(this,12),0,0,0);
+                  controls.addView(browse,b);
+
+                  FrameLayout posterFrame=new FrameLayout(this);
+                  posterFrame.setBackground(U.rounded(0xFF172C58,U.dp(this,18)));
+                  posterFrame.setClipToOutline(true);
+                  LinearLayout.LayoutParams p=U.lp(216,230,this);
+                  p.setMargins(U.dp(this,16),0,0,0);
+                  stage.addView(posterFrame,p);
+                  TextView placeholder=U.text(this,"sky\\nDR TV",31,true);
+                  placeholder.setGravity(Gravity.CENTER);
+                  placeholder.setTextColor(0xFFCFD9FF);
+                  posterFrame.addView(placeholder,new FrameLayout.LayoutParams(-1,-1));
+                  featuredPoster=new android.widget.ImageView(this);
+                  featuredPoster.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+                  posterFrame.addView(featuredPoster,new FrameLayout.LayoutParams(-1,-1));
+                  posterFrame.setFocusable(true);
+                  U.focus(posterFrame,this,0xFF172C58);
+                  posterFrame.setOnClickListener(v->{if(featuredEntry!=null)open(featuredEntry);else switchTab("Movies");});
+
+                  // Compact D-pad-friendly shortcuts — the first row remains visible on a TV.
+                  LinearLayout quick=U.row(this);
+                  int screenDp=(int)(getResources().getDisplayMetrics().widthPixels/getResources().getDisplayMetrics().density);
+                  int shortcutWidth=Math.max(102,Math.min(188,(screenDp-85)/5-12));
+                  String[] labels={"Live TV","Movies","Series","My List","Continue"};
+                  String[] descriptions={"Watch now","Films for you","Box sets","Your picks","Pick up"};
+                  String[] symbols={"▶","▣","▤","♡","↻"};
+                  for(int i=0;i<labels.length;i++) {
+                      final String destination=labels[i];
+                      LinearLayout card=U.col(this);
+                      U.pad(card,this,15,10,8,8);
+                      U.focus(card,this,0xCC1E2B52);
+                      card.setOnClickListener(v->switchTab(destination));
+                      TextView symbol=U.text(this,symbols[i],25,true);
+                      symbol.setTextColor(0xFF8FCAFF);card.addView(symbol,U.lp(-1,30,this));
+                      TextView name=U.text(this,labels[i],16,true);card.addView(name,U.lp(-1,24,this));
+                      TextView hint=U.text(this,descriptions[i],11,false);
+                      hint.setTextColor(U.MUTED);card.addView(hint,U.lp(-1,19,this));
+                      LinearLayout.LayoutParams qp=U.lp(shortcutWidth,90,this);
+                      qp.setMargins(0,0,U.dp(this,12),0);quick.addView(card,qp);
+                  }
+                  body.addView(quick,U.lp(-1,106,this));
+
+                  List<MediaEntry> recent=Library.get(this,"recent");
+                  if(!recent.isEmpty()) section("Continue watching",recent,true);
+                  List<MediaEntry> fav=Library.get(this,"favourites");
+                  if(!fav.isEmpty()) section("Your favourites",fav,true);
+                  showcase("Live TV",MediaEntry.LIVE,mine);
+                  showcase("Movies",MediaEntry.MOVIE,mine);
+                  showcase("Series",MediaEntry.SERIES,mine);
+              }
+              private void promote(MediaEntry item) {
+                  if(featuredTitle==null || featuredPoster==null || item==null)return;
+                  featuredEntry=item;
+                  featuredTitle.setText(item.title);
+                  featuredCaption.setText("FEATURED FILM   •   WATCH FROM YOUR LIBRARY");
+                  ImageLoader.load(featuredPoster,item.image);
+              }
+          '''
+          s=s[:start]+new_home+s[end:]
+          # Reuse the already loaded movies — never make an additional provider request.
+          needle='List<MediaEntry> items=XtreamClient.page(entries,type,0,15);'
+          assert needle in s
+          s=s.replace(needle,needle+'\n                if("Movies".equals(sectionName) && !items.isEmpty())promote(items.get(0));',1)
+          # Improve readability of showcase section headings while keeping existing onClick.
+          s=s.replace('TextView headline=U.text(this,sectionName+"   ›",21,true);',
+                      'TextView headline=U.text(this,sectionName+"     SEE ALL   ›",21,true);',1)
+          # Navigation selected state gets a richer blue accent; no new menu entries to overflow.
+          s=s.replace('U.focus(item,this,tab.equals(title)?0x88595988:0x00232948);',
+                      'U.focus(item,this,tab.equals(title)?0xFF234E9B:0x001E2F54);',1)
+          file.write_text(s)
+
+          # Sharper electric-blue focus throughout, while keeping the familiar card system.
+          u=ui/'U.java';s=u.read_text();old='GradientDrawable bg=rounded(has?0xFF47457A:normal,dp(c,11));'
+          assert old in s
+          s=s.replace(old,'GradientDrawable bg=rounded(has?0xFF1254AB:normal,dp(c,11));',1)
+          s=s.replace('has?0xFFFFFFFF:0x334F587A','has?0xFF8EDBFF:0x334F587A',1)
+          u.write_text(s)
+
+          # Two lightweight Android gradient resources, no hardcoded movie posters or external assets.
+          resources=root/'app/src/main/res/drawable'
+          (resources/'bg_hero.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android">
+              <gradient android:angle="0" android:startColor="#15204F"
+                  android:centerColor="#32216A" android:endColor="#0B5196"/>
+              <corners android:radius="20dp"/>
+              <stroke android:width="1dp" android:color="#4A618BC5"/>
+          </shape>
+          ''')
+          (resources/'bg_glass.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android">
+              <gradient android:angle="135" android:startColor="#060B21"
+                  android:centerColor="#171A44" android:endColor="#061D36"/>
+          </shape>
+          ''')
+          # Keep same signing identity and minSdk; this is still the original Fire OS Android app.
+          g=root/'app/build.gradle';s=g.read_text();
+          assert 'versionCode 5' in s
+          s=s.replace('versionCode 5','versionCode 6',1).replace("versionName '3.3'","versionName '3.4'",1)
+          g.write_text(s)
+          print('Premium v3.4 theme and dynamic home screen applied; playback, guide and category code untouched.')
           PY
 
       - name: Build APK
@@ -174,10 +318,9 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
-
       - name: Save APK
         uses: actions/upload-artifact@v4
         with:
-          name: DR-TV-3.3-APK
+          name: DR-TV-3.4-Premium-APK
           path: DRTV_SkyStyle_FireStick/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
